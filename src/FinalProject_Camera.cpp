@@ -250,8 +250,8 @@ int main(int argc, const char *argv[])
                     }
                 }
                 
-                std::cout << "curr lidar size" << currBB->lidarPoints.size() << std::endl;
-                std::cout << "prev lidar size" << prevBB->lidarPoints.size() << std::endl;
+                // std::cout << "curr lidar size" << currBB->lidarPoints.size() << std::endl;
+                // std::cout << "prev lidar size" << prevBB->lidarPoints.size() << std::endl;
 
                 // compute TTC for current match
                 if( currBB->lidarPoints.size()>0 && prevBB->lidarPoints.size()>0 ) // only compute TTC if we have Lidar points
@@ -259,7 +259,7 @@ int main(int argc, const char *argv[])
                     //// STUDENT ASSIGNMENT
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
                     double ttcLidar; 
-                    std::cout << "inside if loop line 254" <<std::endl;
+                    // std::cout << "inside if loop line 254" <<std::endl;
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
                     //// EOF STUDENT ASSIGNMENT
 

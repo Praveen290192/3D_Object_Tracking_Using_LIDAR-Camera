@@ -7,6 +7,7 @@
 
 #include "camFusion.hpp"
 #include "dataStructures.h"
+#include <cmath>
 
 
 using namespace std;
@@ -150,34 +151,68 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
     // ...
 }
 
-// void PointCloudFilter(std::vector<LidarPoint> &inputCloud, float dist)
-// {
-//     pcl::PCLPointCloud2 pcl_pc2;
-//     pcl_conversions::toPCL(*inputCloud,pcl_pc2);
-// }
+void removingOutliersFilter(std::vector<LidarPoint> &inputPoints, std::vector<LidarPoint> &outputPoints)
+{
+    float mean = 0.0, sum = 0.0 ,variance = 0.0, sd = 0.0;
+    
+    for(auto point: inputPoints)
+    {
+        sum += point.x;
+    }
+    mean = sum/inputPoints.size();
+    for(auto point: inputPoints)
+    {
+        variance += pow(point.x - mean, 2);
+    }
+    sd = sqrt(variance/inputPoints.size());
+    std::cout << "mean: " <<mean << " sd: " <<sd <<std::endl;
+    for(auto i = 0; i < inputPoints.size(); i++)
+    {
+        if((inputPoints[i].x > (mean - sd)) && (inputPoints[i].x < (mean + sd))) 
+        {
+            outputPoints.push_back(inputPoints[i]);
+            
+        }
+        
+        if (abs(inputPoints[i].y) > 2.0)
+        {
+            std::cout<<inputPoints[i].y<<std::endl;
+            std::cout<<inputPoints[i].x<<std::endl;
+        }
+    }
+    
+
+}
 
 
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
+    std::vector<LidarPoint> filteredLidarPointsPrev, filteredLidarPointsCurr; 
+    removingOutliersFilter(lidarPointsPrev, filteredLidarPointsPrev);
+    removingOutliersFilter(lidarPointsCurr, filteredLidarPointsCurr);
+    double dT = 1/frameRate;
     double minPrev = 1e8, minCurr = 1e8;
-    for (auto prevPoints: lidarPointsPrev)
+    for (auto prevPoints: filteredLidarPointsPrev)
     {
         minPrev = minPrev > prevPoints.x ? prevPoints.x : minPrev;
+        
     }
-    for (auto currPoints: lidarPointsCurr)
+    for (auto currPoints: filteredLidarPointsCurr)
     {
         minCurr = minCurr > currPoints.x ? currPoints.x : minCurr;
     }
+    std::cout<<"minPrev: " << minPrev <<std::endl;
+    std::cout<<"minCurr: " << minCurr <<std::endl;
 
-    TTC = minCurr/(frameRate*(minPrev - minCurr));
+    TTC = minCurr*dT/(minPrev - minCurr);
     cout << "time to collision" << TTC << "sec" << endl;
 }
 
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    
+    int currFrameMatch = -1;
     for(BoundingBox prevFrameBox: prevFrame.boundingBoxes)
     {
         int prevFrameKeyPts = 0;
@@ -186,18 +221,18 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
             int currFrameKeyPts = 0;
             for(cv::DMatch match: matches)
             {
-                if((prevFrameBox.roi.contains(prevFrame.keypoints[match.trainIdx].pt)) && (currFrameBox.roi.contains(currFrame.keypoints[match.trainIdx].pt)))
+                if((prevFrameBox.roi.contains(prevFrame.keypoints[match.queryIdx].pt)) && (currFrameBox.roi.contains(currFrame.keypoints[match.trainIdx].pt)))
                 {
                     currFrameKeyPts +=1;
                 }
             }
             if(currFrameKeyPts > prevFrameKeyPts)
             {
-                bbBestMatches[1] = currFrameBox.boxID;
+                currFrameMatch = currFrameBox.boxID;
                 prevFrameKeyPts = currFrameKeyPts;
             }
         }
-        bbBestMatches[0] = prevFrameBox.boxID;
+        bbBestMatches.insert(pair<int,int>(prevFrameBox.boxID, currFrameMatch));
     }
     std::cout<<"prevBoxMatch:" << bbBestMatches[0]<<", currBoxMatch:" <<bbBestMatches[1] <<endl;
 }

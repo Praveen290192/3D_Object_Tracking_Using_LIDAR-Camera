@@ -139,8 +139,26 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
-{
-    // ...
+{    
+    double dist = 0.0, mean = 0.0;
+    std::vector<cv::DMatch> UnFilteredMatches;
+    for(auto match: kptMatches)
+    {
+        if(boundingBox.roi.contains(kptsCurr[match.trainIdx].pt))
+        {
+            dist += cv::norm(kptsCurr[match.trainIdx].pt - kptsPrev[match.queryIdx].pt);
+            UnFilteredMatches.push_back(match);
+        }
+    }
+    mean = dist/UnFilteredMatches.size();
+    std::cout<< "mean: " << mean << ", size: " << UnFilteredMatches.size() <<std::endl;
+    for(auto match: UnFilteredMatches)
+    {
+        if((cv::norm(kptsCurr[match.trainIdx].pt - kptsPrev[match.queryIdx].pt)) < mean) 
+        {
+            boundingBox.kptMatches.push_back(match);
+        }
+    }
 }
 
 
@@ -148,7 +166,40 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
                       std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
 {
-    // ...
+    vector<double> distRatios;
+    for(auto i = kptMatches.begin(); i != kptMatches.end()-1; ++i)
+    {
+        cv::KeyPoint kpOuterCurr = kptsCurr.at(i->trainIdx);
+        cv::KeyPoint kpOuterPrev = kptsPrev.at(i->queryIdx);
+        for(auto j = kptMatches.begin()+1; j != kptMatches.end(); ++j)
+        {
+            cv::KeyPoint kpInnerCurr = kptsCurr.at(j->trainIdx);
+            cv::KeyPoint kpInnerPrev = kptsPrev.at(j->queryIdx);
+            
+            double minDist = 100.0;
+            double distCurr = cv::norm(kpOuterCurr.pt - kpInnerCurr.pt);
+            double distPrev = cv::norm(kpOuterPrev.pt - kpInnerPrev.pt);
+
+            if(distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
+            {
+                double distRatio = distCurr/distPrev;
+                distRatios.push_back(distRatio);
+            }
+        }
+    }
+    if (distRatios.size() == 0)
+    {
+        TTC = NAN;
+        return;
+    }
+    std::sort(distRatios.begin(), distRatios.end());
+    long medianIndex = floor(distRatios.size()/2.0);
+    double medianDistRatio = distRatios.size() % 2 == 0 ? (distRatios[medianIndex] + distRatios[medianIndex - 1])/ 2.0 : distRatios[medianIndex];
+
+    double dT = 1/frameRate;
+    TTC = - dT / (1 - medianDistRatio);
+    std::cout << "CameraTTC: " << TTC << " s" <<std::endl;
+
 }
 
 void removingOutliersFilter(std::vector<LidarPoint> &inputPoints, std::vector<LidarPoint> &outputPoints)
@@ -206,7 +257,7 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     std::cout<<"minCurr: " << minCurr <<std::endl;
 
     TTC = minCurr*dT/(minPrev - minCurr);
-    cout << "time to collision" << TTC << "sec" << endl;
+    std::cout << "LidarTTC: " << TTC << " s" <<std::endl;
 }
 
 

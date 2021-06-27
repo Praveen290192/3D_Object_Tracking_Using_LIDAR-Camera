@@ -127,7 +127,7 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
     // display image
     string windowName = "3D Objects";
-    cv::namedWindow(windowName, 1);
+    cv::namedWindow(windowName, cv::WINDOW_NORMAL);
     cv::imshow(windowName, topviewImg);
 
     if(bWait)
@@ -140,7 +140,7 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {    
-    double dist = 0.0, mean = 0.0;
+    double dist = 0.0, mean = 0.0, variance = 0.0, sd = 0.0;
     std::vector<cv::DMatch> UnFilteredMatches;
     for(auto match: kptMatches)
     {
@@ -151,10 +151,17 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
         }
     }
     mean = dist/UnFilteredMatches.size();
-    std::cout<< "mean: " << mean << ", size: " << UnFilteredMatches.size() <<std::endl;
     for(auto match: UnFilteredMatches)
     {
-        if((cv::norm(kptsCurr[match.trainIdx].pt - kptsPrev[match.queryIdx].pt)) < mean) 
+        float distance = cv::norm(kptsCurr[match.trainIdx].pt - kptsPrev[match.queryIdx].pt);
+        // std::cout << distance
+        variance += pow(distance - mean, 2);
+    }
+    sd = sqrt(variance/UnFilteredMatches.size());
+    std::cout<< "mean: " << mean << ", sd: " << sd <<std::endl;
+    for(auto match: UnFilteredMatches)
+    {
+        if(abs(cv::norm(kptsCurr[match.trainIdx].pt - kptsPrev[match.queryIdx].pt) - mean) < sd) 
         {
             boundingBox.kptMatches.push_back(match);
         }
@@ -219,25 +226,17 @@ void removingOutliersFilter(std::vector<LidarPoint> &inputPoints, std::vector<Li
     std::cout << "mean: " <<mean << " sd: " <<sd <<std::endl;
     for(auto i = 0; i < inputPoints.size(); i++)
     {
-        if((inputPoints[i].x > (mean - sd)) && (inputPoints[i].x < (mean + sd))) 
+        if(abs (inputPoints[i].x - mean) < sd/10)  
         {
-            outputPoints.push_back(inputPoints[i]);
-            
+            outputPoints.push_back(inputPoints[i]);            
         }
-        
-        if (abs(inputPoints[i].y) > 2.0)
-        {
-            std::cout<<inputPoints[i].y<<std::endl;
-            std::cout<<inputPoints[i].x<<std::endl;
-        }
-    }
-    
+    }  
 
 }
 
 
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
-                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
+                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC, double &prevMin, double &currMin)
 {
     std::vector<LidarPoint> filteredLidarPointsPrev, filteredLidarPointsCurr; 
     removingOutliersFilter(lidarPointsPrev, filteredLidarPointsPrev);
@@ -255,6 +254,8 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     }
     std::cout<<"minPrev: " << minPrev <<std::endl;
     std::cout<<"minCurr: " << minCurr <<std::endl;
+    prevMin = minPrev;
+    currMin = minCurr;
 
     TTC = minCurr*dT/(minPrev - minCurr);
     std::cout << "LidarTTC: " << TTC << " s" <<std::endl;

@@ -35,7 +35,7 @@ int main(int argc, const char *argv[])
     string imgPrefix = "KITTI/2011_09_26/image_02/data/000000"; // left camera, color
     string imgFileType = ".png";
     int imgStartIndex = 0; // first file index to load (assumes Lidar and camera names have identical naming convention)
-    int imgEndIndex = 18;   // last file index to load
+    int imgEndIndex = 20;   // last file index to load
     int imgStepWidth = 1; 
     int imgFillWidth = 4;  // no. of digits which make up the file index (e.g. img-0001.png)
 
@@ -75,17 +75,17 @@ int main(int argc, const char *argv[])
     bool bVis = false;            // visualize results
 
     /* MAIN LOOP OVER ALL IMAGES */
-    vector<string> detectorType = {  "FAST", "BRISK", "ORB", "AKAZE", "SIFT", "HARRIS"};
+    vector<string> detectorType ={"AKAZE"};// {  "FAST", "BRISK", "ORB", "AKAZE", "SIFT", "HARRIS"};
     ofstream detectorFile;
     detectorFile.open("task7.csv");
     detectorFile << "Detector Type, #keypoints, Detection Time (ms)\n";
-    vector<string> descriptorType = {"BRISK","FREAK", "BRIEF", "ORB" };
+    vector<string> descriptorType = {"BRIEF"};//{"BRISK","FREAK", "BRIEF", "ORB" };
     ofstream descriptorFile;
     descriptorFile.open("task8_task9.csv");
     descriptorFile << "Detector Type, Descriptor Type, averageKeypointsDetectors, averageKeypointsDescriptors, averageMatches, averageDetectorsDetectionTime (ms), averageTotalDetectionTime (ms)\n";
     ofstream performanceFile;
     performanceFile.open("Performance_evaluation.csv");
-    performanceFile << "Detector Type, Descriptor Type, KeypointsDetectors, KeypointsDescriptors, Matches, DetectorsDetectionTime (ms), TotalDetectionTime (ms), TTC Lidar, TTC Camera\n";
+    performanceFile << "Detector Type, Descriptor Type, KeypointsDetectors, KeypointsDescriptors, Matches, DetectorsDetectionTime (ms), TotalDetectionTime (ms), prevMin, currMin, TTC Lidar, TTC Camera\n";
 
     /* MAIN LOOP OVER ALL IMAGES */
     for(string detectorT: detectorType)
@@ -105,10 +105,7 @@ int main(int argc, const char *argv[])
                 /* LOAD IMAGE INTO BUFFER */
 
                 // assemble filenames for current index
-                float DetectorsDetectionTime = 0;
-                float TotalDetectionTime = 0;
-                auto Matches = 0;
-                float eMatcheTime = 0;
+                
                 ostringstream imgNumber;
                 imgNumber << setfill('0') << setw(imgFillWidth) << imgStartIndex + imgIndex;
                 string imgFullFilename = imgBasePath + imgPrefix + imgNumber.str() + imgFileType;
@@ -119,6 +116,10 @@ int main(int argc, const char *argv[])
                 // push image into data frame buffer
                 DataFrame frame;
                 frame.cameraImg = img;
+                if (dataBuffer.size() == dataBufferSize)
+                {
+                    dataBuffer.erase(dataBuffer.begin());
+                }
                 dataBuffer.push_back(frame);
 
                 cout << "#1 : LOAD IMAGE INTO BUFFER done" << endl;
@@ -157,7 +158,7 @@ int main(int argc, const char *argv[])
                 clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end() - 1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
                 // Visualize 3D objects
-                bVis = false;
+                bVis = true;
                 if(bVis)
                 {
                     show3DObjects((dataBuffer.end()-1)->boundingBoxes, cv::Size(4.0, 20.0), cv::Size(2000, 2000), true);
@@ -305,9 +306,9 @@ int main(int argc, const char *argv[])
                         {
                             //// STUDENT ASSIGNMENT
                             //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
-                            double ttcLidar; 
+                            double ttcLidar, prevMin, currMin; 
                             // std::cout << "inside if loop line 254" <<std::endl;
-                            computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
+                            computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar, prevMin, currMin);
                             //// EOF STUDENT ASSIGNMENT
 
                             //// STUDENT ASSIGNMENT
@@ -327,7 +328,7 @@ int main(int argc, const char *argv[])
                                 
                                 char str[200];
                                 sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcLidar, ttcCamera);
-                                performanceFile << detectorT + "," + descriptorT+","+to_string(keypointsDetectors)+","+to_string(keypointsDescriptors) +","+to_string(matches.size()) +","+to_string(computationTimeDetector+ computationTimeDescriptor ) +","+to_string(computationTimeDetector+ computationTimeDescriptor + computationTimeMatches)+","+to_string(ttcLidar)+","+to_string(ttcCamera)+"\n";
+                                performanceFile << detectorT + "," + descriptorT+","+to_string(keypointsDetectors)+","+to_string(keypointsDescriptors) +","+to_string(matches.size()) +","+to_string(computationTimeDetector+ computationTimeDescriptor ) +","+to_string(computationTimeDetector+ computationTimeDescriptor + computationTimeMatches)+","+to_string(prevMin)+","+to_string(currMin)+","+to_string(ttcLidar)+","+to_string(ttcCamera)+"\n";
 
                                 putText(visImg, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
 
@@ -335,7 +336,7 @@ int main(int argc, const char *argv[])
                                 cv::namedWindow(windowName, 4);
                                 cv::imshow(windowName, visImg);
                                 cout << "Press key to continue to next frame" << endl;
-                                // cv::waitKey(0);
+                                cv::waitKey(0);
                             }
                             bVis = false;
 
@@ -345,8 +346,8 @@ int main(int argc, const char *argv[])
                 }
 
             } // eof loop over all images
-            detectorFile << detectorT+","+to_string(keypointsDetectors/10)+","+to_string(averageDetectorsDetectionTime/10)+"\n";
-            descriptorFile << detectorT + "," + descriptorT+","+to_string(keypointsDetectors/10)+","+to_string(keypointsDescriptors/10) +","+to_string(averageMatches/10) +","+to_string(averageDetectorsDetectionTime/10) +","+to_string(averageTotalDetectionTime/10)+"\n";
+            detectorFile << detectorT+","+to_string(keypointsDetectors/20)+","+to_string(averageDetectorsDetectionTime/20)+"\n";
+            descriptorFile << detectorT + "," + descriptorT+","+to_string(keypointsDetectors/20)+","+to_string(keypointsDescriptors/20) +","+to_string(averageMatches/20) +","+to_string(averageDetectorsDetectionTime/20) +","+to_string(averageTotalDetectionTime/20)+"\n";
         }
     }
     detectorFile.close();
